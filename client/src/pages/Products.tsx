@@ -34,6 +34,14 @@ const Products = () => {
     return map
   }, [categories])
 
+  const categoryIdMap = useMemo(() => {
+    const map = new Map<string, Category>()
+    categories.forEach((category) => {
+      map.set(category.id, category)
+    })
+    return map
+  }, [categories])
+
   const loadCategories = async () => {
     try {
       const { data, error } = await supabase
@@ -74,10 +82,7 @@ const Products = () => {
 
       let query = supabase
         .from('cocktails')
-        .select(`
-          *,
-          category:categories(*)
-        `)
+        .select('*')
         .eq('is_available', true)
 
       // Apply category filter by joining and filtering
@@ -298,54 +303,57 @@ const Products = () => {
           transition={{ delay: 0.2 }}
           className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6"
         >
-          {products.map((product, index) => (
-            <motion.div
-              key={product.id}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: index * 0.05 }}
-            >
-              <Link to={`/products/${product.id}`}>
-                <div className="product-card h-full flex flex-col">
-                  <div className="relative">
-                    <img
-                      src={product.image_url || 'https://via.placeholder.com/400'}
-                      alt={product.name}
-                      className="w-full h-56 object-cover"
-                    />
-                    {product.is_featured && (
-                      <span className="absolute top-3 right-3 px-3 py-1 bg-accent-primary text-white text-xs font-semibold rounded-full">
-                        Featured
-                      </span>
-                    )}
-                  </div>
-                  <div className="p-5 flex-1 flex flex-col">
-                    {product.category && (
-                      <p className="text-accent-primary text-xs font-semibold mb-2">
-                        {product.category.name}
+          {products.map((product, index) => {
+            const category = product.category_id ? categoryIdMap.get(product.category_id) : null
+            return (
+              <motion.div
+                key={product.id}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: index * 0.05 }}
+              >
+                <Link to={`/products/${product.id}`}>
+                  <div className="product-card h-full flex flex-col">
+                    <div className="relative">
+                      <img
+                        src={product.image_url || 'https://via.placeholder.com/400'}
+                        alt={product.name}
+                        className="w-full h-56 object-cover"
+                      />
+                      {product.is_featured && (
+                        <span className="absolute top-3 right-3 px-3 py-1 bg-accent-primary text-white text-xs font-semibold rounded-full">
+                          Featured
+                        </span>
+                      )}
+                    </div>
+                    <div className="p-5 flex-1 flex flex-col">
+                      {category && (
+                        <p className="text-accent-primary text-xs font-semibold mb-2">
+                          {category.name}
+                        </p>
+                      )}
+                      <h3 className="text-lg font-semibold mb-2">{product.name}</h3>
+                      <p className="text-gray-400 text-sm mb-4 line-clamp-2 flex-1">
+                        {product.description}
                       </p>
-                    )}
-                    <h3 className="text-lg font-semibold mb-2">{product.name}</h3>
-                    <p className="text-gray-400 text-sm mb-4 line-clamp-2 flex-1">
-                      {product.description}
-                    </p>
-                    <div className="flex items-center justify-between mt-auto">
-                      <span className="text-2xl font-bold gradient-text">
-                        ${Number(product.price).toFixed(2)}
-                      </span>
-                      <motion.button
-                        whileHover={{ scale: 1.05 }}
-                        whileTap={{ scale: 0.95 }}
-                        className="btn-primary text-sm px-4 py-2"
-                      >
-                        View
-                      </motion.button>
+                      <div className="flex items-center justify-between mt-auto">
+                        <span className="text-2xl font-bold gradient-text">
+                          ${Number(product.price).toFixed(2)}
+                        </span>
+                        <motion.button
+                          whileHover={{ scale: 1.05 }}
+                          whileTap={{ scale: 0.95 }}
+                          className="btn-primary text-sm px-4 py-2"
+                        >
+                          View
+                        </motion.button>
+                      </div>
                     </div>
                   </div>
-                </div>
-              </Link>
-            </motion.div>
-          ))}
+                </Link>
+              </motion.div>
+            )
+          })}
         </motion.div>
       )}
     </div>

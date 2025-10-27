@@ -4,7 +4,7 @@ import { motion } from 'framer-motion'
 import { ShoppingCart, ArrowLeft, Package, Droplet, Wine } from 'lucide-react'
 import { supabase } from '@/services/supabase'
 import { useCart } from '@/contexts/CartContext'
-import type { Cocktail } from '../../../shared/types'
+import type { Cocktail, Category } from '../../../shared/types'
 import toast from 'react-hot-toast'
 
 const ProductDetail = () => {
@@ -12,6 +12,7 @@ const ProductDetail = () => {
   const navigate = useNavigate()
   const { addToCart } = useCart()
   const [product, setProduct] = useState<Cocktail | null>(null)
+  const [category, setCategory] = useState<Category | null>(null)
   const [loading, setLoading] = useState(true)
   const [quantity, setQuantity] = useState(1)
   const [addingToCart, setAddingToCart] = useState(false)
@@ -27,10 +28,7 @@ const ProductDetail = () => {
       setLoading(true)
       const { data, error } = await supabase
         .from('cocktails')
-        .select(`
-          *,
-          category:categories(*)
-        `)
+        .select('*')
         .eq('id', id)
         .single()
 
@@ -43,6 +41,19 @@ const ProductDetail = () => {
       }
 
       setProduct(data)
+
+      // Load category separately if it exists
+      if (data.category_id) {
+        const { data: categoryData } = await supabase
+          .from('categories')
+          .select('*')
+          .eq('id', data.category_id)
+          .single()
+
+        if (categoryData) {
+          setCategory(categoryData)
+        }
+      }
     } catch (error) {
       console.error('Error loading product:', error)
       toast.error('Failed to load product')
@@ -141,9 +152,9 @@ const ProductDetail = () => {
           className="flex flex-col"
         >
           {/* Category */}
-          {product.category && (
+          {category && (
             <p className="text-accent-primary text-sm font-semibold mb-2">
-              {product.category.name}
+              {category.name}
             </p>
           )}
 

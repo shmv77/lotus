@@ -43,15 +43,34 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     try {
       setLoading(true)
-      const { data, error } = await supabase
+      const { data: cartData, error } = await supabase
         .from('cart_items')
-        .select('*, cocktail:cocktails(*)')
+        .select('*')
         .eq('user_id', user.id)
         .order('created_at', { ascending: false })
 
       if (error) throw error
 
-      setCartItems(data || [])
+      // Load cocktails separately
+      if (cartData && cartData.length > 0) {
+        const cocktailIds = cartData.map(item => item.cocktail_id)
+        const { data: cocktailsData, error: cocktailsError } = await supabase
+          .from('cocktails')
+          .select('*')
+          .in('id', cocktailIds)
+
+        if (cocktailsError) throw cocktailsError
+
+        // Attach cocktails to cart items
+        const cartWithCocktails = cartData.map(item => ({
+          ...item,
+          cocktail: cocktailsData?.find(c => c.id === item.cocktail_id) || null
+        }))
+
+        setCartItems(cartWithCocktails)
+      } else {
+        setCartItems([])
+      }
     } catch (error: any) {
       console.error('Error loading cart:', error)
       toast.error('Failed to load cart')
@@ -82,12 +101,18 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
             cocktail_id: cocktail.id,
             quantity,
           })
-          .select('*, cocktail:cocktails(*)')
+          .select('*')
           .single()
 
         if (error) throw error
 
-        setCartItems(prev => [data, ...prev])
+        // Attach cocktail data
+        const cartItemWithCocktail = {
+          ...data,
+          cocktail
+        }
+
+        setCartItems(prev => [cartItemWithCocktail, ...prev])
         toast.success(`${cocktail.name} added to cart`)
       }
     } catch (error: any) {
@@ -110,13 +135,14 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
         .update({ quantity })
         .eq('id', itemId)
         .eq('user_id', user.id)
-        .select('*, cocktail:cocktails(*)')
+        .select('*')
         .single()
 
       if (error) throw error
 
+      // Update with existing cocktail data
       setCartItems(prev =>
-        prev.map(item => (item.id === itemId ? data : item))
+        prev.map(item => item.id === itemId ? { ...data, cocktail: item.cocktail } : item)
       )
     } catch (error: any) {
       console.error('Error updating cart:', error)

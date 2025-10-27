@@ -42,15 +42,30 @@ const AdminDashboard = () => {
       setLoading(true)
 
       // Load orders
-      const { data: orders, error: ordersError } = await supabase
+      const { data: ordersData, error: ordersError } = await supabase
         .from('orders')
-        .select(`
-          *,
-          items:order_items(*)
-        `)
+        .select('*')
         .order('created_at', { ascending: false })
 
       if (ordersError) throw ordersError
+
+      // Load order items separately
+      let ordersWithItems = ordersData || []
+      if (ordersData && ordersData.length > 0) {
+        const orderIds = ordersData.map(order => order.id)
+        const { data: itemsData, error: itemsError } = await supabase
+          .from('order_items')
+          .select('*')
+          .in('order_id', orderIds)
+
+        if (itemsError) throw itemsError
+
+        // Attach items to orders
+        ordersWithItems = ordersData.map(order => ({
+          ...order,
+          items: itemsData?.filter(item => item.order_id === order.id) || []
+        }))
+      }
 
       // Load products
       const { data: productsData, error: productsError } = await supabase
@@ -61,15 +76,15 @@ const AdminDashboard = () => {
       if (productsError) throw productsError
 
       // Calculate stats
-      const totalRevenue = orders?.reduce((sum, order) =>
+      const totalRevenue = ordersWithItems.reduce((sum, order) =>
         sum + Number(order.total_amount), 0
       ) || 0
 
       setStats({
         totalRevenue,
-        totalOrders: orders?.length || 0,
+        totalOrders: ordersWithItems.length || 0,
         totalProducts: productsData?.length || 0,
-        recentOrders: orders?.slice(0, 10) || [],
+        recentOrders: ordersWithItems.slice(0, 10) || [],
       })
 
       setProducts(productsData || [])

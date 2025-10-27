@@ -19,16 +19,35 @@ const Profile = () => {
   const loadOrders = async () => {
     try {
       setLoading(true)
-      const { data, error } = await supabase
+
+      // Load orders
+      const { data: ordersData, error: ordersError } = await supabase
         .from('orders')
-        .select(`
-          *,
-          items:order_items(*)
-        `)
+        .select('*')
         .order('created_at', { ascending: false })
 
-      if (error) throw error
-      setOrders(data || [])
+      if (ordersError) throw ordersError
+
+      // Load order items for each order separately
+      if (ordersData && ordersData.length > 0) {
+        const orderIds = ordersData.map(order => order.id)
+        const { data: itemsData, error: itemsError } = await supabase
+          .from('order_items')
+          .select('*')
+          .in('order_id', orderIds)
+
+        if (itemsError) throw itemsError
+
+        // Attach items to orders
+        const ordersWithItems = ordersData.map(order => ({
+          ...order,
+          items: itemsData?.filter(item => item.order_id === order.id) || []
+        }))
+
+        setOrders(ordersWithItems)
+      } else {
+        setOrders([])
+      }
     } catch (error) {
       console.error('Error loading orders:', error)
       toast.error('Failed to load orders')
