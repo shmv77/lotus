@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { Mail, Lock, User, UserPlus } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
+import toast from 'react-hot-toast'
 
 const Register = () => {
   const [email, setEmail] = useState('')

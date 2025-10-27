@@ -121,7 +121,7 @@ const Cart = () => {
                     <div className="flex items-center gap-3">
                       <button
                         onClick={() => handleUpdateQuantity(item.id, item.quantity - 1)}
-                        disabled={item.quantity <= 1}
+                        disabled={updating || item.quantity <= 1}
                         className="w-8 h-8 bg-dark-800 border border-dark-700 rounded hover:bg-dark-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                       >
                         <Minus className="w-4 h-4 mx-auto" />
@@ -131,7 +131,7 @@ const Cart = () => {
                       </span>
                       <button
                         onClick={() => handleUpdateQuantity(item.id, item.quantity + 1)}
-                        disabled={item.quantity >= (item.cocktail?.stock || 0)}
+                        disabled={updating || item.quantity >= (item.cocktail?.stock || 0)}
                         className="w-8 h-8 bg-dark-800 border border-dark-700 rounded hover:bg-dark-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                       >
                         <Plus className="w-4 h-4 mx-auto" />
@@ -143,7 +143,8 @@ const Cart = () => {
                       whileHover={{ scale: 1.05 }}
                       whileTap={{ scale: 0.95 }}
                       onClick={() => handleRemoveItem(item.id)}
-                      className="flex items-center gap-2 text-red-400 hover:text-red-300 transition-colors"
+                      disabled={updating}
+                      className="flex items-center gap-2 text-red-400 hover:text-red-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <Trash2 className="w-4 h-4" />
                       Remove

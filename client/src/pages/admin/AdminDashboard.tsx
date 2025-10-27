@@ -7,7 +7,6 @@ import {
   Users,
   TrendingUp,
   Eye,
-  Edit,
   Trash2,
   Plus,
   X
@@ -198,7 +197,7 @@ const AdminDashboard = () => {
         ingredientsJson = []
       }
 
-      const { data, error } = await supabase
+      const { error } = await supabase
         .from('cocktails')
         .insert({
           name: formData.name,

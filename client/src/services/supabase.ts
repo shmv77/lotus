@@ -24,7 +24,7 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
 })
 
 // Add error listener for auth errors
-supabase.auth.onAuthStateChange((event, session) => {
+supabase.auth.onAuthStateChange((event) => {
   if (event === 'SIGNED_OUT') {
     // Clear any cached data when user signs out
     console.log('Session cleared')
