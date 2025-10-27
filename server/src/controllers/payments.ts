@@ -49,8 +49,10 @@ export const createPaymentIntent = async (req: AuthRequest, res: Response): Prom
       .eq('id', order_id)
 
     res.json({
-      clientSecret: paymentIntent.client_secret,
-      amount: order.total_amount,
+      data: {
+        clientSecret: paymentIntent.client_secret,
+        amount: order.total_amount,
+      }
     })
   } catch (error: any) {
     console.error('Create payment intent error:', error)

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { MapPin, ShoppingBag } from 'lucide-react'
 import { useCart } from '@/contexts/CartContext'
+import { useAuth } from '@/contexts/AuthContext'
 import { StripeProvider, isStripeConfigured } from '@/components/StripeProvider'
 import { PaymentForm } from '@/components/PaymentForm'
 import toast from 'react-hot-toast'
@@ -10,9 +11,9 @@ import toast from 'react-hot-toast'
 const Checkout = () => {
   const navigate = useNavigate()
   const { cartItems, getCartTotal, clearCart } = useCart()
+  const { session } = useAuth()
   const [loading, setLoading] = useState(false)
   const [clientSecret, setClientSecret] = useState<string | null>(null)
-  const [orderId, setOrderId] = useState<string | null>(null)
   const [formData, setFormData] = useState({
     shipping_address: '',
     city: '',
@@ -51,11 +52,18 @@ const Checkout = () => {
       return
     }
 
+    // Get auth token
+    if (!session?.access_token) {
+      toast.error('You must be logged in to checkout')
+      navigate('/login')
+      return
+    }
+
     setLoading(true)
 
     try {
       const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000'
-      const token = localStorage.getItem('supabase.auth.token')
+      const token = session.access_token
 
       // Create order
       const orderResponse = await fetch(`${API_URL}/api/orders`, {
@@ -91,7 +99,6 @@ const Checkout = () => {
 
       const paymentData = await paymentResponse.json()
       setClientSecret(paymentData.data.clientSecret)
-      setOrderId(newOrderId)
       toast.success('Order created! Please complete payment.')
     } catch (error: any) {
       console.error('Checkout error:', error)
