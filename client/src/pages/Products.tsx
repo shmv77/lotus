@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { useEffect, useState, useMemo, useCallback } from 'react'
+import { Link, useLocation, useSearchParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { Search, Filter, X } from 'lucide-react'
 import { supabase } from '@/services/supabase'
@@ -7,14 +7,32 @@ import type { Cocktail, Category, ProductFilters } from '../../../shared/types'
 
 const Products = () => {
   const [searchParams, setSearchParams] = useSearchParams()
+  const location = useLocation()
   const [products, setProducts] = useState<Cocktail[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [loading, setLoading] = useState(true)
-  const [filters, setFilters] = useState<ProductFilters>({
-    category: searchParams.get('category') || undefined,
-    search: searchParams.get('search') || undefined,
-    sortBy: (searchParams.get('sortBy') as ProductFilters['sortBy']) || 'newest',
-  })
+
+  const filters = useMemo<ProductFilters>(() => {
+    const params = new URLSearchParams(location.search)
+    const category = params.get('category') || undefined
+    const search = params.get('search') || undefined
+    const sortBy =
+      (params.get('sortBy') as ProductFilters['sortBy']) || 'newest'
+
+    return {
+      category,
+      search,
+      sortBy,
+    }
+  }, [location.search])
+
+  const categorySlugMap = useMemo(() => {
+    const map = new Map<string, string>()
+    categories.forEach((category) => {
+      map.set(category.slug, category.id)
+    })
+    return map
+  }, [categories])
 
   const loadCategories = async () => {
     try {
@@ -30,10 +48,29 @@ const Products = () => {
     }
   }
 
-  const loadProducts = async () => {
+  const { category: selectedCategory, search: searchTerm, sortBy } = filters
+
+  const loadProducts = useCallback(async () => {
+    let categoryId: string | undefined
+
+    if (selectedCategory) {
+      categoryId = categorySlugMap.get(selectedCategory)
+
+      if (!categoryId && categorySlugMap.size > 0) {
+        console.warn(`Unknown category slug: ${selectedCategory}`)
+        setProducts([])
+        setLoading(false)
+        return
+      }
+    }
+
     setLoading(true)
     try {
-      console.log('Loading products with filters:', filters)
+      console.log('Loading products with filters:', {
+        category: selectedCategory,
+        search: searchTerm,
+        sortBy,
+      })
 
       let query = supabase
         .from('cocktails')
@@ -44,20 +81,17 @@ const Products = () => {
         .eq('is_available', true)
 
       // Apply category filter by joining and filtering
-      if (filters.category && categories.length > 0) {
-        const category = categories.find(c => c.slug === filters.category)
-        if (category) {
-          query = query.eq('category_id', category.id)
-        }
+      if (categoryId) {
+        query = query.eq('category_id', categoryId)
       }
 
       // Apply search filter
-      if (filters.search) {
-        query = query.or(`name.ilike.%${filters.search}%,description.ilike.%${filters.search}%`)
+      if (searchTerm) {
+        query = query.or(`name.ilike.%${searchTerm}%,description.ilike.%${searchTerm}%`)
       }
 
       // Apply sorting
-      switch (filters.sortBy) {
+      switch (sortBy) {
         case 'price_asc':
           query = query.order('price', { ascending: true })
           break
@@ -91,58 +125,64 @@ const Products = () => {
     } finally {
       setLoading(false)
     }
-  }
+  }, [selectedCategory, searchTerm, sortBy, categorySlugMap])
 
   useEffect(() => {
     loadCategories()
   }, [])
 
   useEffect(() => {
-    const category = searchParams.get('category') || undefined
-    const search = searchParams.get('search') || undefined
-    const sortBy =
-      (searchParams.get('sortBy') as ProductFilters['sortBy']) || 'newest'
-
-    setFilters((prev) => {
-      if (
-        prev.category === category &&
-        prev.search === search &&
-        prev.sortBy === sortBy
-      ) {
-        return prev
-      }
-
-      return {
-        ...prev,
-        category,
-        search,
-        sortBy,
-      }
-    })
-  }, [searchParams])
-
-  useEffect(() => {
     loadProducts()
-  }, [filters, categories])
+  }, [loadProducts])
 
   const updateFilters = (newFilters: Partial<ProductFilters>) => {
-    const updated = { ...filters, ...newFilters }
-    setFilters(updated)
+    const params = new URLSearchParams(searchParams)
 
-    // Update URL params
-    const params = new URLSearchParams()
-    if (updated.category) params.set('category', updated.category)
-    if (updated.search) params.set('search', updated.search)
-    if (updated.sortBy) params.set('sortBy', updated.sortBy)
-    setSearchParams(params)
+    if ('category' in newFilters) {
+      if (newFilters.category) {
+        params.set('category', newFilters.category)
+      } else {
+        params.delete('category')
+      }
+    }
+
+    if ('search' in newFilters) {
+      if (newFilters.search) {
+        params.set('search', newFilters.search)
+      } else {
+        params.delete('search')
+      }
+    }
+
+    if ('sortBy' in newFilters) {
+      const sortValue = newFilters.sortBy || 'newest'
+      if (sortValue === 'newest') {
+        params.delete('sortBy')
+      } else {
+        params.set('sortBy', sortValue)
+      }
+    }
+
+    const current = searchParams.toString()
+    const next = params.toString()
+
+    if (current === next) return
+
+    if (next) {
+      setSearchParams(params)
+    } else {
+      setSearchParams({})
+    }
   }
 
   const clearFilters = () => {
-    setFilters({ sortBy: 'newest' })
+    if (!selectedCategory && !searchTerm && sortBy === 'newest') {
+      return
+    }
     setSearchParams({})
   }
 
-  const hasActiveFilters = filters.category || filters.search
+  const hasActiveFilters = Boolean(selectedCategory || searchTerm)
 
   return (
     <div className="section-container">
@@ -169,7 +209,7 @@ const Products = () => {
             <input
               type="text"
               placeholder="Search products..."
-              value={filters.search || ''}
+              value={searchTerm || ''}
               onChange={(e) => updateFilters({ search: e.target.value || undefined })}
               className="w-full pl-12 pr-4 py-3 bg-dark-800 border border-dark-700 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-accent-primary focus:border-transparent"
             />
@@ -185,7 +225,7 @@ const Products = () => {
               <button
                 onClick={() => updateFilters({ category: undefined })}
                 className={`px-4 py-2 rounded-lg transition-all ${
-                  !filters.category
+                  !selectedCategory
                     ? 'bg-accent-primary text-white'
                     : 'bg-dark-800 text-gray-400 hover:bg-dark-700'
                 }`}
@@ -197,7 +237,7 @@ const Products = () => {
                   key={category.id}
                   onClick={() => updateFilters({ category: category.slug })}
                   className={`px-4 py-2 rounded-lg transition-all ${
-                    filters.category === category.slug
+                    selectedCategory === category.slug
                       ? 'bg-accent-primary text-white'
                       : 'bg-dark-800 text-gray-400 hover:bg-dark-700'
                   }`}
@@ -213,7 +253,7 @@ const Products = () => {
             <div className="flex items-center gap-2">
               <label className="text-gray-400 text-sm">Sort by:</label>
               <select
-                value={filters.sortBy}
+                value={sortBy}
                 onChange={(e) => updateFilters({ sortBy: e.target.value as ProductFilters['sortBy'] })}
                 className="px-4 py-2 bg-dark-800 border border-dark-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-accent-primary"
               >
