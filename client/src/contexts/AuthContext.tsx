@@ -33,15 +33,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   useEffect(() => {
     // Get initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session)
-      setUser(session?.user ?? null)
-      if (session?.user) {
-        loadProfile(session.user.id)
-      } else {
+    supabase.auth
+      .getSession()
+      .then(({ data: { session } }) => {
+        setSession(session)
+        setUser(session?.user ?? null)
+        if (session?.user) {
+          loadProfile(session.user.id, session.user)
+        } else {
+          setLoading(false)
+        }
+      })
+      .catch((error) => {
+        console.error('Error getting session:', error)
         setLoading(false)
-      }
-    })
+      })
 
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
@@ -49,9 +55,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setSession(session)
         setUser(session?.user ?? null)
         if (session?.user) {
-          await loadProfile(session.user.id)
+          await loadProfile(session.user.id, session.user)
         } else {
           setProfile(null)
+          setLoading(false)
         }
       }
     )
@@ -59,15 +66,40 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => subscription.unsubscribe()
   }, [])
 
-  const loadProfile = async (userId: string) => {
+  const loadProfile = async (userId: string, sessionUser?: User | null) => {
+    setLoading(true)
+
     try {
       const profileData = await getUserProfile(userId)
       setProfile(profileData)
     } catch (error: any) {
       console.error('Error loading profile:', error)
       console.error('Error details:', error.message, error.hint)
-      // If profile doesn't exist or RLS denies access, set profile to null
-      setProfile(null)
+      const isMissingRow = error?.code === 'PGRST116' || error?.message?.includes('No rows')
+
+      if (isMissingRow && sessionUser) {
+        try {
+          const { data, error: insertError } = await supabase
+            .from('profiles')
+            .insert({
+              id: sessionUser.id,
+              email: sessionUser.email ?? '',
+              full_name: sessionUser.user_metadata?.full_name ?? sessionUser.email ?? '',
+              avatar_url: sessionUser.user_metadata?.avatar_url ?? null,
+            })
+            .select()
+            .single()
+
+          if (insertError) throw insertError
+          setProfile(data)
+        } catch (insertError) {
+          console.error('Error creating profile:', insertError)
+          setProfile(null)
+        }
+      } else {
+        // If profile doesn't exist or RLS denies access, set profile to null
+        setProfile(null)
+      }
     } finally {
       setLoading(false)
     }
@@ -90,7 +122,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       toast.success('Account created successfully!')
 
       if (data.user) {
-        await loadProfile(data.user.id)
+        await loadProfile(data.user.id, data.user)
       }
     } catch (error: any) {
       toast.error(error.message || 'Failed to sign up')
@@ -110,7 +142,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       toast.success('Welcome back!')
 
       if (data.user) {
-        await loadProfile(data.user.id)
+        await loadProfile(data.user.id, data.user)
       }
     } catch (error: any) {
       toast.error(error.message || 'Failed to sign in')

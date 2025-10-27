@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { Search, Filter, X } from 'lucide-react'
@@ -16,14 +16,6 @@ const Products = () => {
     sortBy: (searchParams.get('sortBy') as ProductFilters['sortBy']) || 'newest',
   })
 
-  useEffect(() => {
-    loadCategories()
-  }, [])
-
-  useEffect(() => {
-    loadProducts()
-  }, [loadProducts])
-
   const loadCategories = async () => {
     try {
       const { data, error } = await supabase
@@ -38,7 +30,7 @@ const Products = () => {
     }
   }
 
-  const loadProducts = useCallback(async () => {
+  const loadProducts = async () => {
     setLoading(true)
     try {
       console.log('Loading products with filters:', filters)
@@ -99,6 +91,38 @@ const Products = () => {
     } finally {
       setLoading(false)
     }
+  }
+
+  useEffect(() => {
+    loadCategories()
+  }, [])
+
+  useEffect(() => {
+    const category = searchParams.get('category') || undefined
+    const search = searchParams.get('search') || undefined
+    const sortBy =
+      (searchParams.get('sortBy') as ProductFilters['sortBy']) || 'newest'
+
+    setFilters((prev) => {
+      if (
+        prev.category === category &&
+        prev.search === search &&
+        prev.sortBy === sortBy
+      ) {
+        return prev
+      }
+
+      return {
+        ...prev,
+        category,
+        search,
+        sortBy,
+      }
+    })
+  }, [searchParams])
+
+  useEffect(() => {
+    loadProducts()
   }, [filters, categories])
 
   const updateFilters = (newFilters: Partial<ProductFilters>) => {
