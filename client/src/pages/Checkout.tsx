@@ -1,14 +1,18 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { CreditCard, MapPin, ShoppingBag } from 'lucide-react'
+import { MapPin, ShoppingBag } from 'lucide-react'
 import { useCart } from '@/contexts/CartContext'
+import { StripeProvider, isStripeConfigured } from '@/components/StripeProvider'
+import { PaymentForm } from '@/components/PaymentForm'
 import toast from 'react-hot-toast'
 
 const Checkout = () => {
   const navigate = useNavigate()
   const { cartItems, getCartTotal, clearCart } = useCart()
   const [loading, setLoading] = useState(false)
+  const [clientSecret, setClientSecret] = useState<string | null>(null)
+  const [orderId, setOrderId] = useState<string | null>(null)
   const [formData, setFormData] = useState({
     shipping_address: '',
     city: '',
@@ -19,6 +23,7 @@ const Checkout = () => {
   })
 
   const total = getCartTotal()
+  const stripeConfigured = isStripeConfigured()
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     setFormData({
@@ -38,6 +43,11 @@ const Checkout = () => {
     // Validate form
     if (!formData.shipping_address || !formData.city || !formData.postal_code || !formData.country || !formData.phone) {
       toast.error('Please fill in all required fields')
+      return
+    }
+
+    if (!stripeConfigured) {
+      toast.error('Payment processing is not configured')
       return
     }
 
@@ -63,7 +73,7 @@ const Checkout = () => {
       }
 
       const orderData = await orderResponse.json()
-      const orderId = orderData.data.id
+      const newOrderId = orderData.data.id
 
       // Create payment intent
       const paymentResponse = await fetch(`${API_URL}/api/payments/intent`, {
@@ -72,27 +82,39 @@ const Checkout = () => {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`,
         },
-        body: JSON.stringify({ order_id: orderId }),
+        body: JSON.stringify({ order_id: newOrderId }),
       })
 
       if (!paymentResponse.ok) {
         throw new Error('Failed to create payment intent')
       }
 
-      // In a real app, you would integrate Stripe Elements here
-      // const paymentData = await paymentResponse.json()
-      // Use paymentData.clientSecret with Stripe Elements
-
-      // For now, we'll simulate a successful payment
-      toast.success('Order placed successfully!')
-      await clearCart()
-      navigate('/profile')
+      const paymentData = await paymentResponse.json()
+      setClientSecret(paymentData.data.clientSecret)
+      setOrderId(newOrderId)
+      toast.success('Order created! Please complete payment.')
     } catch (error: any) {
       console.error('Checkout error:', error)
       toast.error(error.message || 'Failed to complete checkout')
     } finally {
       setLoading(false)
     }
+  }
+
+  const handlePaymentSuccess = async () => {
+    try {
+      await clearCart()
+      toast.success('Order placed successfully!')
+      navigate('/profile')
+    } catch (error) {
+      console.error('Error after payment:', error)
+      toast.error('Payment succeeded but there was an error. Please check your profile.')
+      navigate('/profile')
+    }
+  }
+
+  const handlePaymentError = (error: string) => {
+    toast.error(`Payment failed: ${error}`)
   }
 
   if (cartItems.length === 0) {
@@ -243,26 +265,36 @@ const Checkout = () => {
             </motion.div>
 
             {/* Payment Information */}
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.2 }}
-              className="glass-card p-6"
-            >
-              <div className="flex items-center gap-3 mb-6">
-                <CreditCard className="w-6 h-6 text-accent-primary" />
-                <h2 className="text-2xl font-semibold">Payment Information</h2>
-              </div>
-
-              <div className="bg-dark-800 border border-dark-700 rounded-lg p-6 text-center">
-                <p className="text-gray-400 mb-2">
-                  Stripe integration will appear here
-                </p>
-                <p className="text-sm text-gray-500">
-                  Configure VITE_STRIPE_PUBLISHABLE_KEY in .env to enable payment processing
-                </p>
-              </div>
-            </motion.div>
+            {clientSecret ? (
+              <StripeProvider>
+                <PaymentForm
+                  clientSecret={clientSecret}
+                  onSuccess={handlePaymentSuccess}
+                  onError={handlePaymentError}
+                  disabled={loading}
+                />
+              </StripeProvider>
+            ) : (
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.2 }}
+                className="glass-card p-6"
+              >
+                <div className="bg-dark-800 border border-dark-700 rounded-lg p-6 text-center">
+                  <p className="text-gray-400 mb-2">
+                    {stripeConfigured
+                      ? 'Complete shipping information to proceed to payment'
+                      : 'Payment processing not configured'}
+                  </p>
+                  {!stripeConfigured && (
+                    <p className="text-sm text-gray-500">
+                      Configure VITE_STRIPE_PUBLISHABLE_KEY in .env to enable payment processing
+                    </p>
+                  )}
+                </div>
+              </motion.div>
+            )}
           </div>
 
           {/* Order Summary */}
@@ -310,15 +342,25 @@ const Checkout = () => {
                 </div>
               </div>
 
-              <motion.button
-                type="submit"
-                disabled={loading}
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                className="btn-primary w-full text-lg py-4 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {loading ? 'Processing...' : 'Place Order'}
-              </motion.button>
+              {!clientSecret && (
+                <motion.button
+                  type="submit"
+                  disabled={loading || !stripeConfigured}
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  className="btn-primary w-full text-lg py-4 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {loading ? 'Processing...' : 'Create Order'}
+                </motion.button>
+              )}
+
+              {clientSecret && (
+                <div className="bg-accent-primary/10 border border-accent-primary/20 rounded-lg p-4 text-center">
+                  <p className="text-sm text-gray-300">
+                    Complete payment above to finalize your order
+                  </p>
+                </div>
+              )}
 
               <p className="text-xs text-gray-500 text-center mt-4">
                 By placing your order, you agree to our terms and conditions

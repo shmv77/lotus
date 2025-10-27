@@ -32,33 +32,89 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    // Get initial session
-    supabase.auth
-      .getSession()
-      .then(({ data: { session } }) => {
+    // Get initial session with reduced timeout
+    const initializeAuth = async () => {
+      try {
+        // Reduce timeout to 3 seconds for faster UX
+        const sessionPromise = supabase.auth.getSession()
+        const timeoutPromise = new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('Session loading timeout')), 3000)
+        )
+
+        const { data: { session }, error } = await Promise.race([
+          sessionPromise,
+          timeoutPromise
+        ]) as Awaited<typeof sessionPromise>
+
+        // Handle session errors (invalid/expired tokens)
+        if (error) {
+          console.error('Session error:', error)
+          // Clear invalid session from localStorage
+          await supabase.auth.signOut()
+          setSession(null)
+          setUser(null)
+          setProfile(null)
+          setLoading(false)
+          return
+        }
+
         setSession(session)
         setUser(session?.user ?? null)
-        if (session?.user) {
-          loadProfile(session.user.id, session.user)
-        } else {
-          setLoading(false)
-        }
-      })
-      .catch((error) => {
-        console.error('Error getting session:', error)
+
+        // Set loading to false immediately so UI renders
         setLoading(false)
-      })
+
+        // Load profile in background (non-blocking)
+        if (session?.user) {
+          loadProfile(session.user.id, session.user).catch(error => {
+            console.error('Background profile load failed:', error)
+          })
+        }
+      } catch (error: any) {
+        console.error('Error getting session:', error)
+
+        // Check if it's an auth error and clear invalid session
+        if (error?.message?.includes('session') || error?.message?.includes('token')) {
+          try {
+            await supabase.auth.signOut()
+          } catch (signOutError) {
+            console.error('Error clearing session:', signOutError)
+          }
+        }
+
+        // If session restoration fails/times out, continue without auth
+        setSession(null)
+        setUser(null)
+        setProfile(null)
+        setLoading(false)
+      }
+    }
+
+    initializeAuth()
 
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (_event, session) => {
+      async (event, session) => {
+        console.log('Auth state changed:', event)
+
+        // Handle session errors
+        if (event === 'TOKEN_REFRESHED') {
+          console.log('Token refreshed successfully')
+        } else if (event === 'SIGNED_OUT') {
+          console.log('User signed out')
+        }
+
         setSession(session)
         setUser(session?.user ?? null)
+        setLoading(false)
+
         if (session?.user) {
-          await loadProfile(session.user.id, session.user)
+          // Load profile in background (non-blocking)
+          loadProfile(session.user.id, session.user).catch(error => {
+            console.error('Background profile load failed:', error)
+          })
         } else {
           setProfile(null)
-          setLoading(false)
         }
       }
     )
@@ -67,17 +123,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [])
 
   const loadProfile = async (userId: string, sessionUser?: User | null) => {
-    setLoading(true)
-
     try {
-      const profileData = await getUserProfile(userId)
+      // Reduce timeout to 5 seconds for faster response
+      const profileData = await Promise.race([
+        getUserProfile(userId),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('Profile loading timeout')), 5000)
+        )
+      ])
       setProfile(profileData)
     } catch (error: any) {
       console.error('Error loading profile:', error)
-      console.error('Error details:', error.message, error.hint)
       const isMissingRow = error?.code === 'PGRST116' || error?.message?.includes('No rows')
+      const isTimeout = error?.message?.includes('timeout')
 
-      if (isMissingRow && sessionUser) {
+      if (isTimeout) {
+        console.warn('Profile loading timed out, continuing with null profile')
+        setProfile(null)
+      } else if (isMissingRow && sessionUser) {
         try {
           const { data, error: insertError } = await supabase
             .from('profiles')
@@ -100,8 +163,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         // If profile doesn't exist or RLS denies access, set profile to null
         setProfile(null)
       }
-    } finally {
-      setLoading(false)
     }
   }
 
@@ -120,10 +181,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (error) throw error
 
       toast.success('Account created successfully!')
-
-      if (data.user) {
-        await loadProfile(data.user.id, data.user)
-      }
+      // Profile will be loaded by onAuthStateChange
     } catch (error: any) {
       toast.error(error.message || 'Failed to sign up')
       throw error
@@ -140,10 +198,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (error) throw error
 
       toast.success('Welcome back!')
-
-      if (data.user) {
-        await loadProfile(data.user.id, data.user)
-      }
+      // Profile will be loaded by onAuthStateChange
     } catch (error: any) {
       toast.error(error.message || 'Failed to sign in')
       throw error

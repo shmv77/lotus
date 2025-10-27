@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { motion } from 'framer-motion'
 import { User, Package, LogOut, Mail } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
@@ -12,18 +12,22 @@ const Profile = () => {
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState<'profile' | 'orders'>('profile')
 
-  useEffect(() => {
-    loadOrders()
-  }, [])
-
-  const loadOrders = async () => {
+  const loadOrders = useCallback(async () => {
     try {
       setLoading(true)
 
-      // Load orders
+      // Check if user exists
+      if (!user) {
+        setOrders([])
+        setLoading(false)
+        return
+      }
+
+      // Load orders for current user only
       const { data: ordersData, error: ordersError } = await supabase
         .from('orders')
         .select('*')
+        .eq('user_id', user.id)
         .order('created_at', { ascending: false })
 
       if (ordersError) throw ordersError
@@ -54,7 +58,13 @@ const Profile = () => {
     } finally {
       setLoading(false)
     }
-  }
+  }, [user])
+
+  useEffect(() => {
+    if (user) {
+      loadOrders()
+    }
+  }, [user, loadOrders])
 
   const handleSignOut = async () => {
     try {

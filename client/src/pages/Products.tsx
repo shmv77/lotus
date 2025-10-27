@@ -74,12 +74,6 @@ const Products = () => {
 
     setLoading(true)
     try {
-      console.log('Loading products with filters:', {
-        category: selectedCategory,
-        search: searchTerm,
-        sortBy,
-      })
-
       let query = supabase
         .from('cocktails')
         .select('*')
@@ -115,7 +109,6 @@ const Products = () => {
           break
       }
 
-      console.log('Executing query...')
       const { data, error } = await query
 
       if (error) {
@@ -123,14 +116,14 @@ const Products = () => {
         throw error
       }
 
-      console.log('Products loaded:', data?.length || 0)
       setProducts(data || [])
     } catch (error) {
       console.error('Error loading products:', error)
     } finally {
       setLoading(false)
     }
-  }, [selectedCategory, searchTerm, sortBy, categorySlugMap])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedCategory, searchTerm, sortBy])
 
   useEffect(() => {
     loadCategories()

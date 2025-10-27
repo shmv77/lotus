@@ -12,7 +12,27 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     autoRefreshToken: true,
     persistSession: true,
     detectSessionInUrl: true,
+    storage: window.localStorage,
+    storageKey: 'lotus-auth',
+    flowType: 'pkce',
   },
+  global: {
+    headers: {
+      'X-Client-Info': 'lotus-cocktail-store',
+    },
+  },
+})
+
+// Add error listener for auth errors
+supabase.auth.onAuthStateChange((event, session) => {
+  if (event === 'SIGNED_OUT') {
+    // Clear any cached data when user signs out
+    console.log('Session cleared')
+  } else if (event === 'USER_UPDATED') {
+    console.log('User data updated')
+  } else if (event === 'TOKEN_REFRESHED') {
+    console.log('Auth token refreshed')
+  }
 })
 
 // Helper function to get the current session

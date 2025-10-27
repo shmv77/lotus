@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { motion } from 'framer-motion'
+import { motion, AnimatePresence } from 'framer-motion'
 import {
   DollarSign,
   Package,
@@ -8,11 +8,13 @@ import {
   TrendingUp,
   Eye,
   Edit,
-  Trash2
+  Trash2,
+  Plus,
+  X
 } from 'lucide-react'
 import { supabase } from '@/services/supabase'
 import { Link } from 'react-router-dom'
-import type { Order, Cocktail } from '../../../../shared/types'
+import type { Order, Cocktail, Category } from '../../../../shared/types'
 import toast from 'react-hot-toast'
 
 interface Stats {
@@ -20,6 +22,20 @@ interface Stats {
   totalOrders: number
   totalProducts: number
   recentOrders: Order[]
+}
+
+interface ProductFormData {
+  name: string
+  description: string
+  price: string
+  image_url: string
+  category_id: string
+  alcohol_content: string
+  volume_ml: string
+  stock: string
+  is_featured: boolean
+  is_available: boolean
+  ingredients: string
 }
 
 const AdminDashboard = () => {
@@ -30,12 +46,43 @@ const AdminDashboard = () => {
     recentOrders: [],
   })
   const [products, setProducts] = useState<Cocktail[]>([])
+  const [categories, setCategories] = useState<Category[]>([])
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState<'overview' | 'products' | 'orders'>('overview')
+  const [showCreateModal, setShowCreateModal] = useState(false)
+  const [formData, setFormData] = useState<ProductFormData>({
+    name: '',
+    description: '',
+    price: '',
+    image_url: '',
+    category_id: '',
+    alcohol_content: '',
+    volume_ml: '',
+    stock: '0',
+    is_featured: false,
+    is_available: true,
+    ingredients: '[]'
+  })
+  const [submitting, setSubmitting] = useState(false)
 
   useEffect(() => {
     loadDashboardData()
+    loadCategories()
   }, [])
+
+  const loadCategories = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('categories')
+        .select('*')
+        .order('name')
+
+      if (error) throw error
+      setCategories(data || [])
+    } catch (error) {
+      console.error('Error loading categories:', error)
+    }
+  }
 
   const loadDashboardData = async () => {
     try {
@@ -130,6 +177,73 @@ const AdminDashboard = () => {
       console.error('Error updating order:', error)
       toast.error('Failed to update order')
     }
+  }
+
+  const handleCreateProduct = async (e: React.FormEvent) => {
+    e.preventDefault()
+
+    if (!formData.name || !formData.description || !formData.price || !formData.category_id) {
+      toast.error('Please fill in all required fields')
+      return
+    }
+
+    try {
+      setSubmitting(true)
+
+      // Parse ingredients JSON
+      let ingredientsJson = []
+      try {
+        ingredientsJson = JSON.parse(formData.ingredients)
+      } catch {
+        ingredientsJson = []
+      }
+
+      const { data, error } = await supabase
+        .from('cocktails')
+        .insert({
+          name: formData.name,
+          description: formData.description,
+          price: parseFloat(formData.price),
+          image_url: formData.image_url || null,
+          category_id: formData.category_id,
+          alcohol_content: formData.alcohol_content ? parseFloat(formData.alcohol_content) : null,
+          volume_ml: formData.volume_ml ? parseInt(formData.volume_ml) : null,
+          stock: parseInt(formData.stock),
+          is_featured: formData.is_featured,
+          is_available: formData.is_available,
+          ingredients: ingredientsJson
+        })
+        .select()
+        .single()
+
+      if (error) throw error
+
+      toast.success('Product created successfully!')
+      setShowCreateModal(false)
+      resetForm()
+      loadDashboardData()
+    } catch (error: any) {
+      console.error('Error creating product:', error)
+      toast.error(error.message || 'Failed to create product')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const resetForm = () => {
+    setFormData({
+      name: '',
+      description: '',
+      price: '',
+      image_url: '',
+      category_id: '',
+      alcohol_content: '',
+      volume_ml: '',
+      stock: '0',
+      is_featured: false,
+      is_available: true,
+      ingredients: '[]'
+    })
   }
 
   const getStatusColor = (status: string) => {
@@ -325,9 +439,18 @@ const AdminDashboard = () => {
         >
           <div className="flex justify-between items-center mb-6">
             <h2 className="text-2xl font-semibold">Product Management</h2>
-            <p className="text-gray-400 text-sm">
-              Total: {products.length} products
-            </p>
+            <div className="flex items-center gap-4">
+              <p className="text-gray-400 text-sm">
+                Total: {products.length} products
+              </p>
+              <button
+                onClick={() => setShowCreateModal(true)}
+                className="btn-primary flex items-center gap-2"
+              >
+                <Plus className="w-4 h-4" />
+                Create Product
+              </button>
+            </div>
           </div>
 
           <div className="grid gap-4">
@@ -469,6 +592,216 @@ const AdminDashboard = () => {
           </div>
         </motion.div>
       )}
+
+      {/* Create Product Modal */}
+      <AnimatePresence>
+        {showCreateModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+            onClick={() => setShowCreateModal(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="glass-card p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="text-2xl font-semibold gradient-text">Create New Product</h2>
+                <button
+                  onClick={() => setShowCreateModal(false)}
+                  className="p-2 hover:bg-dark-700 rounded-lg transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <form onSubmit={handleCreateProduct} className="space-y-4">
+                {/* Name */}
+                <div>
+                  <label className="block text-sm font-semibold mb-2">
+                    Product Name <span className="text-accent-primary">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={formData.name}
+                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                    className="input-field w-full"
+                    placeholder="e.g., Mojito"
+                  />
+                </div>
+
+                {/* Description */}
+                <div>
+                  <label className="block text-sm font-semibold mb-2">
+                    Description <span className="text-accent-primary">*</span>
+                  </label>
+                  <textarea
+                    required
+                    value={formData.description}
+                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                    className="input-field w-full min-h-[100px]"
+                    placeholder="Describe the product..."
+                  />
+                </div>
+
+                {/* Price and Category */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-semibold mb-2">
+                      Price ($) <span className="text-accent-primary">*</span>
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      required
+                      value={formData.price}
+                      onChange={(e) => setFormData({ ...formData, price: e.target.value })}
+                      className="input-field w-full"
+                      placeholder="0.00"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold mb-2">
+                      Category <span className="text-accent-primary">*</span>
+                    </label>
+                    <select
+                      required
+                      value={formData.category_id}
+                      onChange={(e) => setFormData({ ...formData, category_id: e.target.value })}
+                      className="input-field w-full"
+                    >
+                      <option value="">Select category</option>
+                      {categories.map((category) => (
+                        <option key={category.id} value={category.id}>
+                          {category.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Image URL */}
+                <div>
+                  <label className="block text-sm font-semibold mb-2">
+                    Image URL
+                  </label>
+                  <input
+                    type="url"
+                    value={formData.image_url}
+                    onChange={(e) => setFormData({ ...formData, image_url: e.target.value })}
+                    className="input-field w-full"
+                    placeholder="https://example.com/image.jpg"
+                  />
+                </div>
+
+                {/* Alcohol Content, Volume, Stock */}
+                <div className="grid grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-sm font-semibold mb-2">
+                      Alcohol %
+                    </label>
+                    <input
+                      type="number"
+                      step="0.1"
+                      value={formData.alcohol_content}
+                      onChange={(e) => setFormData({ ...formData, alcohol_content: e.target.value })}
+                      className="input-field w-full"
+                      placeholder="0.0"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold mb-2">
+                      Volume (ml)
+                    </label>
+                    <input
+                      type="number"
+                      value={formData.volume_ml}
+                      onChange={(e) => setFormData({ ...formData, volume_ml: e.target.value })}
+                      className="input-field w-full"
+                      placeholder="500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold mb-2">
+                      Stock <span className="text-accent-primary">*</span>
+                    </label>
+                    <input
+                      type="number"
+                      required
+                      value={formData.stock}
+                      onChange={(e) => setFormData({ ...formData, stock: e.target.value })}
+                      className="input-field w-full"
+                      placeholder="0"
+                    />
+                  </div>
+                </div>
+
+                {/* Ingredients */}
+                <div>
+                  <label className="block text-sm font-semibold mb-2">
+                    Ingredients (JSON Array)
+                  </label>
+                  <textarea
+                    value={formData.ingredients}
+                    onChange={(e) => setFormData({ ...formData, ingredients: e.target.value })}
+                    className="input-field w-full font-mono text-sm min-h-[80px]"
+                    placeholder='["Rum", "Mint", "Sugar", "Lime", "Soda Water"]'
+                  />
+                  <p className="text-xs text-gray-400 mt-1">
+                    Enter as a JSON array, e.g., ["ingredient1", "ingredient2"]
+                  </p>
+                </div>
+
+                {/* Checkboxes */}
+                <div className="flex gap-6">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={formData.is_featured}
+                      onChange={(e) => setFormData({ ...formData, is_featured: e.target.checked })}
+                      className="w-4 h-4 rounded bg-dark-700 border-dark-600"
+                    />
+                    <span className="text-sm">Featured Product</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={formData.is_available}
+                      onChange={(e) => setFormData({ ...formData, is_available: e.target.checked })}
+                      className="w-4 h-4 rounded bg-dark-700 border-dark-600"
+                    />
+                    <span className="text-sm">Available for Sale</span>
+                  </label>
+                </div>
+
+                {/* Action Buttons */}
+                <div className="flex gap-3 pt-4">
+                  <button
+                    type="submit"
+                    disabled={submitting}
+                    className="btn-primary flex-1 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {submitting ? 'Creating...' : 'Create Product'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowCreateModal(false)}
+                    className="btn-secondary flex-1"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   )
 }
